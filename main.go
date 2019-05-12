@@ -18,37 +18,23 @@ var bc *tbot.Client
 var re string
 var log tbot.BasicLogger
 
-func isBroken(link string) bool {
-
-	log.Debugf("Checking %s", link)
-	client := &http.Client{}
-
-	req, err := http.NewRequest("HEAD", link, nil)
-
-	if err != nil {
-		log.Print(err)
-		return false
-	}
-
-	req.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
-
-	resp, err := client.Do(req)
-
+func isBroken(_URL string) bool {
+	log.Debugf("Checking %s", _URL)
+	resp, err := http.Head(_URL)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return true
 	}
-
 	log.Debugf("StatusCode %d", resp.StatusCode)
-
-	return resp.StatusCode > 299 && resp.StatusCode < 600
+	return resp.StatusCode < 200 || resp.StatusCode >= 300
 }
 
-func getHref(t html.Token) (ok bool, href string) {
+func getURL(t html.Token) (ok bool, src string) {
 	for _, a := range t.Attr {
-		if a.Key == "href" {
-			href = strings.TrimSpace(a.Val)
-			ok = len(href) != 0
+		if a.Key == "href" || a.Key == "src" {
+			src = strings.TrimSpace(a.Val)
+			ok = len(src) != 0
+			break
 		}
 	}
 	return
@@ -79,9 +65,7 @@ func getBaseURL(url string) (bool, string) {
 }
 
 func getAllLinks(url string) (bool, []string) {
-
 	log.Printf("Crawling: %s", url)
-
 	resp, err := http.Get(url)
 
 	if err != nil {
@@ -90,19 +74,17 @@ func getAllLinks(url string) (bool, []string) {
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		// log.Printf("StatusCode: %d", resp.StatusCode)
 		return false, []string{}
 	}
 
 	urls := []string{}
 	b := resp.Body
 	defer b.Close()
-
 	z := html.NewTokenizer(b)
 
 	for tt := z.Next(); tt != html.ErrorToken; tt = z.Next() {
-		if t := z.Token(); tt == html.StartTagToken && t.Data == "a" {
-			if ok, foundURL := getHref(t); ok {
+		if t := z.Token(); tt == html.StartTagToken {
+			if ok, foundURL := getURL(t); ok {
 				urls = append(urls, foundURL)
 			}
 		}
